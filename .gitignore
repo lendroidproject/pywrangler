@@ -1,0 +1,4 @@
+*.pyc
+__pycache__
+secret.json
+conf/

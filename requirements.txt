@@ -1,0 +1,8 @@
+web3==4.3.0
+eth-account
+Flask==0.12.2
+flask-cors==3.0.3
+flask-restplus==0.10.1
+python-dateutil==2.7.3
+pyOpenSSL==18.0.0
+requests
