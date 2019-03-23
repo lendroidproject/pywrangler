@@ -1,3 +1,6 @@
+
+import os
+
 import json
 import requests
 
@@ -15,7 +18,7 @@ def get_json_data_from_file(filename):
 def get_abi(contract=None):
     contract = contract or None
     assert(contract is not None)
-    filename = "./abis/{0}.json".format(contract)
+    filename = os.path.join(os.path.dirname(__file__), "abis/{0}.json".format(contract))
     return get_json_data_from_file(filename)
 
 

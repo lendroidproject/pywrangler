@@ -16,6 +16,10 @@ config = get_json_data_from_file("./secret.json")
 DEV = True
 CURRENT_NET = 'kovan' if DEV else 'mainnet'
 HTTP_PROVIDER_URI = "https://{0}.infura.io/{1}".format(CURRENT_NET, config[CURRENT_NET]['infura_key'])
+LOCAL = False
+if LOCAL:
+    CURRENT_NET = 'local'
+    HTTP_PROVIDER_URI = 'http://localhost:8545'
 
 w3 = Web3(Web3.HTTPProvider(HTTP_PROVIDER_URI))
 app = Flask(__name__)
@@ -43,16 +47,17 @@ def page_not_found(e):
 class LoanRequests(Resource):
 
     def post(self):
-        """ Underwrite a loan."""
+        """ Approve a loan request."""
         w = Wrangler(
-            loan_request=request.get_json(force=True),
+            config=config,
             web3_client=w3,
             current_net=CURRENT_NET
         )
-        approval, errors = w.underwrite(data, w3)
-        print('\n\napproval: {0}'.format(approval))
+        loan, approval, errors = w.approve_loan(request.get_json(force=True))
         if len(errors):
+            print('\n\nerrors: {0}'.format(errors))
             abort(400, {"error": errors})
+        print('\n\napproval: {0}'.format(approval))
         return { 'data': loan, 'approval': approval }, 201
 
 
