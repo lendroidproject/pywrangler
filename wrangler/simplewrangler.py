@@ -5,7 +5,7 @@ import pprint
 
 from .utils import get_abi, cmc_rate_per_weth, to_32byte_hex
 
-from datetime import timezone, datetime
+from datetime import timezone, datetime as dt
 from dateutil.relativedelta import relativedelta
 
 from web3 import Web3
@@ -17,6 +17,76 @@ def wait_for_receipt(w3, tx_hash, poll_interval):
        if tx_receipt:
          return tx_receipt
        time.sleep(poll_interval)
+
+
+class LoanRequest:
+    """ Base Python class to represent a filled order sent from the relayer UI."""
+
+    def __init__(self, *args, **kwargs):
+        self.lender = Web3.toChecksumAddress(kwargs.get('lender', None))
+        self.borrower = Web3.toChecksumAddress(kwargs.get('borrower', None))
+        self.relayer = Web3.toChecksumAddress(kwargs.get('relayer', None))
+        self.wrangler = Web3.toChecksumAddress(kwargs.get('wrangler', None))
+        self.filler = Web3.toChecksumAddress(kwargs.get('filler', None))
+        self.loanToken = Web3.toChecksumAddress(kwargs.get('loanToken', None))
+        self.collateralToken = Web3.toChecksumAddress(kwargs.get('collateralToken', None))
+        self.offerExpiry = kwargs.get('offerExpiry', None)
+        assert self.offerExpiry is not None
+        self.interestRatePerDay = kwargs.get('interestRatePerDay', None)
+        assert self.interestRatePerDay is not None
+        self.loanDuration = kwargs.get('loanDuration', None)
+        assert self.loanDuration is not None
+        self.loanAmountOffered = kwargs.get('loanAmountOffered', None)
+        assert self.loanAmountOffered is not None
+        self.fillLoanAmount = kwargs.get('fillLoanAmount', None)
+        assert self.fillLoanAmount is not None
+        self.relayerFeeLST = kwargs.get('relayerFeeLST', None)
+        assert self.relayerFeeLST is not None
+        self.monitoringFeeLST = kwargs.get('monitoringFeeLST', None)
+        assert self.monitoringFeeLST is not None
+        self.rolloverFeeLST = kwargs.get('rolloverFeeLST', None)
+        assert self.rolloverFeeLST is not None
+        self.closureFeeLST = kwargs.get('closureFeeLST', None)
+        assert self.closureFeeLST is not None
+        self.creatorSalt = kwargs.get('creatorSalt', None)
+        assert self.creatorSalt is not None
+        self.ecSignatureCreator = kwargs.get('ecSignatureCreator', None)
+        assert self.ecSignatureCreator is not None
+
+
+class LoanObject:
+    """ Base Python class to represent a loan object."""
+
+    def __init__(self, *args, **kwargs):
+        self.lender = Web3.toChecksumAddress(kwargs.get('lender', None))
+        self.borrower = Web3.toChecksumAddress(kwargs.get('borrower', None))
+        self.relayer = Web3.toChecksumAddress(kwargs.get('relayer', None))
+        self.wrangler = Web3.toChecksumAddress(kwargs.get('wrangler', None))
+        self.filler = Web3.toChecksumAddress(kwargs.get('filler', None))
+        self.loanToken = Web3.toChecksumAddress(kwargs.get('loanToken', None))
+        self.collateralToken = Web3.toChecksumAddress(kwargs.get('collateralToken', None))
+        self.offerExpiry = kwargs.get('offerExpiry', None)
+        assert self.offerExpiry is not None
+        self.interestRatePerDay = kwargs.get('interestRatePerDay', None)
+        assert self.interestRatePerDay is not None
+        self.loanDuration = kwargs.get('loanDuration', None)
+        assert self.loanDuration is not None
+        self.loanAmountOffered = kwargs.get('loanAmountOffered', None)
+        assert self.loanAmountOffered is not None
+        self.fillLoanAmount = kwargs.get('fillLoanAmount', None)
+        assert self.fillLoanAmount is not None
+        self.relayerFeeLST = kwargs.get('relayerFeeLST', None)
+        assert self.relayerFeeLST is not None
+        self.monitoringFeeLST = kwargs.get('monitoringFeeLST', None)
+        assert self.monitoringFeeLST is not None
+        self.rolloverFeeLST = kwargs.get('rolloverFeeLST', None)
+        assert self.rolloverFeeLST is not None
+        self.closureFeeLST = kwargs.get('closureFeeLST', None)
+        assert self.closureFeeLST is not None
+        self.creatorSalt = kwargs.get('creatorSalt', None)
+        assert self.creatorSalt is not None
+        self.ecSignatureCreator = kwargs.get('ecSignatureCreator', None)
+        assert self.ecSignatureCreator is not None
 
 
 class SimpleWrangler:
@@ -40,6 +110,15 @@ class SimpleWrangler:
         self.loan_object = {}
         self.approval = {}
 
+    def current_block_timestamp(self):
+        return self.web3_client.eth.getBlock('latest')['timestamp']
+
+    def maker_medianizer_contract(self):
+        return self.web3_client.eth.contract(
+            address=Web3.toChecksumAddress(self.config[self.CURRENT_NET]["contracts"]["maker_medianizer"]),
+            abi=get_abi('MakerMedianizer-{}'.format(self.CURRENT_NET)),
+        )
+
     def protocol_contract(self):
         return self.web3_client.eth.contract(
             address=Web3.toChecksumAddress(self.config[self.CURRENT_NET]["contracts"]["protocol"]),
@@ -53,8 +132,9 @@ class SimpleWrangler:
         )
 
     def validate_wrangler(self):
+        assert len(self.loan_request.__dict__), "self.loan_request needs to be filled"
         try:
-            assert(Web3.toChecksumAddress(self.loan_request["wrangler"]) in ("Lendroid", Web3.toChecksumAddress(self.config[self.CURRENT_NET]["wrangler"])))
+            assert self.loan_request.wrangler == Web3.toChecksumAddress(self.config[self.CURRENT_NET]["wrangler"])
         except AssertionError as err:
             self.errors.append({
                 'label': 'invalid_wrangler',
@@ -62,95 +142,142 @@ class SimpleWrangler:
             })
 
     def validate_supported_wrangler(self):
+        assert len(self.loan_request.__dict__), "self.loan_request needs to be filled"
         try:
-            assert self.protocol_contract().functions.wranglers(Web3.toChecksumAddress(self.loan_request["wrangler"])).call()
+            assert self.protocol_contract().functions.wranglers(self.loan_request.wrangler).call()
         except AssertionError as err:
             self.errors.append({
                 'label': 'wrangler_not_supported',
-                'message': 'The wrangler {0} is not supported.'.format(Web3.toChecksumAddress(self.loan_request["wrangler"]))
+                'message': 'The wrangler {0} is not supported.'.format(self.loan_request.wrangler)
             })
 
     def validate_supported_lend_currency(self):
+        assert len(self.loan_request.__dict__), "self.loan_request needs to be filled"
         try:
-            assert self.protocol_contract().functions.supported_tokens(Web3.toChecksumAddress(self.config[self.CURRENT_NET]['contracts']['dai'])).call()
+            assert self.protocol_contract().functions.supported_tokens(self.loan_request.loanToken).call()
         except AssertionError as err:
             self.errors.append({
                 'label': 'lend_currency_not_supported',
-                'message': 'The lend currency is not supported.'
+                'message': 'The lend currency address {0} is not supported.'.format(self.loan_request.loanToken)
             })
 
-    def owed_value(self):
-        return self.protocol_contract().functions.owed_value(
-            Web3.toInt(text=self.loan_request["fillLoanAmount"]),
-            Web3.toWei(self.loan_request["interestRatePerDay"], "ether"),
-            Web3.toInt(text=self.loan_request["loanDuration"])
-        ).call()
-
-
     def validate_supported_borrow_currency(self):
+        assert len(self.loan_request.__dict__), "self.loan_request needs to be filled"
         try:
-            assert self.protocol_contract().functions.supported_tokens(Web3.toChecksumAddress(self.config[self.CURRENT_NET]['contracts']['weth'])).call()
+            assert self.protocol_contract().functions.supported_tokens(self.loan_request.collateralToken).call()
         except AssertionError as err:
             self.errors.append({
                 'label': 'borrow_currency_not_supported',
-                'message': 'The borrow currency is not supported.'
+                'message': 'The borrow currency address {0} is not supported.'.format(self.loan_request.collateralToken)
+            })
+
+    def validate_kernel(self):
+        assert len(self.loan_request.__dict__), "self.loan_request needs to be filled"
+        if self.current_block_timestamp() >= float(self.loan_request.offerExpiry):
+            self.errors.append({
+                'label': 'kernel_expired',
+                'message': 'The order has expired. Please fill another order.'
+            })
+
+    def validate_lend_currency_balance(self):
+        assert len(self.loan_object), "self.loan_object needs to be filled"
+        lend_currency_filled_value = float(Web3.fromWei(float(self.loan_object['loanAmountFilled']), 'ether'))
+        try:
+            balance = self.ERC20_contract(self.loan_request.loanToken).functions.balanceOf(Web3.toChecksumAddress(self.loan_object['lender'])).call()
+            assert float(Web3.fromWei(balance, 'ether')) >= lend_currency_filled_value
+        except AssertionError as err:
+            self.errors.append({
+                'label': 'lend_currency_balance',
+                'message': 'Lender does not have enough balance ({0}) of lend currency.'.format(lend_currency_filled_value)
             })
 
     def validate_lend_currency_allowance(self):
+        assert len(self.loan_object), "self.loan_object needs to be filled"
+        lend_currency_filled_value = float(Web3.fromWei(float(self.loan_object['loanAmountFilled']), 'ether'))
         try:
-            allowance = self.ERC20_contract(self.config[self.CURRENT_NET]['contracts']['dai']).functions.allowance(Web3.toChecksumAddress(self.loan_object["lender"]), Web3.toChecksumAddress(self.protocol_contract().address)).call()
-            assert float(Web3.fromWei(allowance, 'ether')) >= float(Web3.fromWei(float(self.loan_object["loanAmountFilled"]), 'ether'))
+            allowance = self.ERC20_contract(self.loan_request.loanToken).functions.allowance(Web3.toChecksumAddress(self.loan_object['lender']), Web3.toChecksumAddress(self.protocol_contract().address)).call()
+            assert float(Web3.fromWei(allowance, 'ether')) >= lend_currency_filled_value
         except AssertionError as err:
             self.errors.append({
                 'label': 'lend_currency_allowance',
-                'message': 'Lender has not set allowance for Lend currency.'
+                'message': 'Lender has not set allowance ({0}) for lend currency.'.format(lend_currency_filled_value)
+            })
+
+    def validate_borrow_currency_balance(self):
+        assert len(self.loan_object), "self.loan_object needs to be filled"
+        _borrow_currency_value = self._borrow_currency_value()
+        try:
+            balance = self.ERC20_contract(self.loan_request.collateralToken).functions.balanceOf(Web3.toChecksumAddress(self.loan_object['borrower'])).call()
+            assert float(Web3.fromWei(balance, 'ether')) >= _borrow_currency_value
+        except AssertionError as err:
+            self.errors.append({
+                'label': 'borrow_currency_balance',
+                'message': 'Borrower does not have enough balance {0} of WETH.'.format(_borrow_currency_value)
             })
 
     def validate_borrow_currency_allowance(self):
+        assert len(self.loan_object), "self.loan_object needs to be filled"
+        _borrow_currency_value = self._borrow_currency_value()
         try:
-            allowance = self.ERC20_contract(self.config[self.CURRENT_NET]['contracts']['weth']).functions.allowance(Web3.toChecksumAddress(self.loan_object["borrower"]), Web3.toChecksumAddress(self.protocol_contract().address)).call()
-            assert float(Web3.fromWei(allowance, 'ether')) >= self._borrow_currency_value()
+            allowance = self.ERC20_contract(self.loan_request.collateralToken).functions.allowance(Web3.toChecksumAddress(self.loan_object['borrower']), Web3.toChecksumAddress(self.protocol_contract().address)).call()
+            assert float(Web3.fromWei(allowance, 'ether')) >= _borrow_currency_value
         except AssertionError as err:
             self.errors.append({
                 'label': 'borrow_currency_allowance',
-                'message': 'Borrower has not set allowance for Borrow currency.'
+                'message': 'Borrower has not set allowance {0} for WETH.'.format(_borrow_currency_value)
             })
 
-    def validate_protocol_currency_allowance(self):
+    def validate_protocol_currency_balance(self):
+        assert len(self.loan_object), "self.loan_object needs to be filled"
+        _monitoring_fee = float(Web3.fromWei(float(self.loan_object['monitoringFeeLST']), 'ether'))
         try:
-            allowance = self.ERC20_contract(self.config[self.CURRENT_NET]['contracts']['lst']).functions.allowance(Web3.toChecksumAddress(self.loan_object["lender"]), Web3.toChecksumAddress(self.protocol_contract().address)).call()
-            assert float(Web3.fromWei(allowance, 'ether')) >= float(Web3.fromWei(float(self.loan_object["monitoringFeeLST"]), 'ether'))
+            balance = self.ERC20_contract(self.config[self.CURRENT_NET]['contracts']['lst']).functions.balanceOf(Web3.toChecksumAddress(self.loan_object['lender'])).call()
+            assert float(Web3.fromWei(balance, 'ether')) >= _monitoring_fee
         except AssertionError as err:
             self.errors.append({
                 'label': 'protocol_currency_allowance_lender',
-                'message': 'Lender has not set allowance for LST.'
+                'message': 'Lender does not have enough balance {0} of LST.'.format(_monitoring_fee)
             })
 
+    def validate_protocol_currency_allowance(self):
+        assert len(self.loan_object), "self.loan_object needs to be filled"
+        _monitoring_fee = float(Web3.fromWei(float(self.loan_object['monitoringFeeLST']), 'ether'))
+        try:
+            allowance = self.ERC20_contract(self.config[self.CURRENT_NET]['contracts']['lst']).functions.allowance(Web3.toChecksumAddress(self.loan_object['lender']), Web3.toChecksumAddress(self.protocol_contract().address)).call()
+            assert float(Web3.fromWei(allowance, 'ether')) >= _monitoring_fee
+        except AssertionError as err:
+            self.errors.append({
+                'label': 'protocol_currency_allowance_lender',
+                'message': 'Lender has not set allowance {0} for LST.'.format(_monitoring_fee)
+            })
+
+    def _owed_value(self):
+        return self.protocol_contract().functions.owed_value(
+            Web3.toInt(text=self.loan_request.fillLoanAmount),
+            Web3.toWei(self.loan_request.interestRatePerDay, "ether"),
+            Web3.toInt(text=self.loan_request.loanDuration)
+        ).call()
+
     def _is_kernel_creator_lender(self):
-        return self.loan_request["lender"] != self.ZERO_ADDRESS
+        return self.loan_request.lender != self.ZERO_ADDRESS
 
     def _kernel_creator(self):
-        return self.loan_request['lender'] if self._is_kernel_creator_lender() else self.loan_request['borrower']
+        return self.loan_request.lender if self._is_kernel_creator_lender() else self.loan_request.borrower
 
     def _weth_dai_rate(self):
+        medianizer_rate = float(Web3.fromWei(Web3.toInt(self.maker_medianizer_contract().functions.read().call()), 'ether'))
+        if medianizer_rate != 0.0:
+            return 1/medianizer_rate
         return float(cmc_rate_per_weth('dai'))
 
-    def _approval_expiry(self, timestamp=False):
-        timestamp = timestamp or False
-        now = datetime.now(tz=timezone.utc)
-        approval_expires_at = now + relativedelta(minutes=2)
-        if not timestamp:
-            return approval_expires_at
-        return int((approval_expires_at - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds())
-
     def _borrow_currency_value(self):
-        return float(Web3.fromWei(float(self.loan_request["fillLoanAmount"]), 'ether')) * self._weth_dai_rate() * self.initial_margin
+        return float(Web3.fromWei(float(self.loan_request.fillLoanAmount), 'ether')) * self._weth_dai_rate() * self.initial_margin
 
     def _position_hash_addresses(self):
         return [Web3.toChecksumAddress(self._kernel_creator()), Web3.toChecksumAddress(self.loan_object['lender']), Web3.toChecksumAddress(self.loan_object['borrower']), Web3.toChecksumAddress(self.loan_object['relayer']), Web3.toChecksumAddress(self.loan_object['wrangler']), Web3.toChecksumAddress(self.loan_object['collateralToken']), Web3.toChecksumAddress(self.loan_object['loanToken'])]
 
     def _position_hash_values(self):
-        return [Web3.toInt(text=self.loan_object['collateralAmount']), Web3.toInt(text=self.loan_request['loanAmountOffered']), Web3.toInt(text=self.loan_object['relayerFeeLST']), Web3.toInt(text=self.loan_object['monitoringFeeLST']), Web3.toInt(text=self.loan_object['rolloverFeeLST']), Web3.toInt(text=self.loan_object['closureFeeLST']), Web3.toInt(text=self.loan_object['loanAmountFilled'])]
+        return [Web3.toInt(text=self.loan_object['collateralAmount']),Web3.toInt(text=self.loan_request.loanAmountOffered),Web3.toInt(text=self.loan_object['relayerFeeLST']),Web3.toInt(text=self.loan_object['monitoringFeeLST']),Web3.toInt(text=self.loan_object['rolloverFeeLST']),Web3.toInt(text=self.loan_object['closureFeeLST']),Web3.toInt(text=self.loan_object['loanAmountFilled'])]
 
     def _signed_approval(self):
         position_hash = self.protocol_contract().functions.position_hash(
@@ -164,113 +291,143 @@ class SimpleWrangler:
         _signature = self.web3_client.eth.account.signHash(position_hash, private_key=Web3.toBytes(hexstr=self.config[self.CURRENT_NET]["private_key"]))
         return _signature.signature
 
+    def _sign_fill_kernel_transaction(self):
+        assert len(self.approval), "self.approval needs to be filled"
+        gas_estimate = self.protocol_contract().functions.fill_kernel(
+            self.approval['_addresses'],
+            self.approval['_values'],
+            self.approval['_nonce'],
+            self.approval['_kernel_daily_interest_rate'],
+            self.approval['_is_creator_lender'],
+            self.approval['_timestamps'],
+            self.approval['_position_duration_in_seconds'],
+            self.approval['_kernel_creator_salt'],
+            self.approval['_sig_data_kernel_creator'],
+            self.approval['_sig_data_wrangler']
+        ).estimateGas()
+
+        chain_id = 0
+        if self.CURRENT_NET == 'mainnet':
+            chain_id = 1
+        elif self.CURRENT_NET == 'kovan':
+            chain_id = 42
+        else:
+            chain_id = 101
+        assert chain_id > 0, "invalid chain id {0}".format(chain_id)
+
+        signed_raw_tx_bytes = self.web3_client.eth.account.signTransaction(
+            self.protocol_contract().functions.fill_kernel(
+                self.approval['_addresses'],
+                self.approval['_values'],
+                self.approval['_nonce'],
+                self.approval['_kernel_daily_interest_rate'],
+                self.approval['_is_creator_lender'],
+                self.approval['_timestamps'],
+                self.approval['_position_duration_in_seconds'],
+                self.approval['_kernel_creator_salt'],
+                self.approval['_sig_data_kernel_creator'],
+                self.approval['_sig_data_wrangler']
+            ).buildTransaction({
+                'chainId': chain_id,
+                'gas': gas_estimate,
+                'gasPrice': self.web3_client.eth.gasPrice,
+                'nonce': self.web3_client.eth.getTransactionCount(Web3.toChecksumAddress(self.config[self.CURRENT_NET]["wrangler"])),
+            }),
+            private_key=Web3.toBytes(hexstr=self.config[self.CURRENT_NET]["private_key"])
+        ).rawTransaction
+        signed_raw_tx_hex = Web3.toHex(signed_raw_tx_bytes)
+
+        return gas_estimate, signed_raw_tx_hex
+
     def create_loan_object(self):
-        current_nonce = self.protocol_contract().functions.wrangler_nonces(Web3.toChecksumAddress(self.loan_request["wrangler"]), Web3.toChecksumAddress(self._kernel_creator())).call()
+        current_nonce = self.protocol_contract().functions.wrangler_nonces(self.loan_request.wrangler, Web3.toChecksumAddress(self._kernel_creator())).call()
         nonce = current_nonce + 1
-        loan_starts_at = self._approval_expiry()
-        loan_duration_seconds = int(self.loan_request["loanDuration"])
-        loan_duration_hours = loan_duration_seconds / 3600
-        # loan_duration_days = loan_duration_seconds / 86400
-        # total_interest = float(self.loan_request["interestRatePerDay"]) * 0.01 * loan_duration_days
-        # principal = float(Web3.fromWei(float(self.loan_request["fillLoanAmount"]), 'ether'))
-        # amount = principal*(1 + total_interest)
-        lending_currency_owed_value = self.owed_value()
-        # print('\n\nprincipal: {0}'.format(principal))
-        # print('\n\namount: {0}'.format(amount))
-        # print('\n\nlending_currency_owed_value: {0}'.format(lending_currency_owed_value))
-        loan_expires_at = loan_starts_at + relativedelta(hours=loan_duration_hours)
-        loan_expires_at_timestamp = int((loan_expires_at - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds())
+        lending_currency_owed_value = self._owed_value()
         self.loan_object = {
-            'collateralToken': self.config[self.CURRENT_NET]['contracts']['weth'],
-            'loanToken': self.config[self.CURRENT_NET]['contracts']['dai'],
+            'collateralToken': self.loan_request.collateralToken,
+            'loanToken': self.loan_request.loanToken,
             'collateralAmount': Web3.toWei(self._borrow_currency_value(), 'ether'),
-            'loanAmountFilled': self.loan_request["fillLoanAmount"],
+            'loanAmountFilled': self.loan_request.fillLoanAmount,
             'loanAmountOwed': lending_currency_owed_value,
-            'expiresAtTimestamp': loan_expires_at_timestamp,
-            'lender': self.loan_request["lender"] if self._is_kernel_creator_lender() else self.loan_request["filler"],
-            'borrower': self.loan_request["borrower"] if self.loan_request["borrower"] != self.ZERO_ADDRESS else self.loan_request["filler"],
-            "relayer": self.loan_request["relayer"],
-            "wrangler": self.loan_request["wrangler"],
-            'relayerFeeLST': self.loan_request["relayerFeeLST"],
-            'monitoringFeeLST': self.loan_request["monitoringFeeLST"],
-            'rolloverFeeLST': self.loan_request["rolloverFeeLST"],
-            'closureFeeLST': self.loan_request["closureFeeLST"],
+            'expiresAtTimestamp': self.current_block_timestamp() + int(self.loan_request.loanDuration),
+            'lender': self.loan_request.lender if self._is_kernel_creator_lender() else self.loan_request.filler,
+            'borrower': self.loan_request.borrower if self.loan_request.borrower != self.ZERO_ADDRESS else self.loan_request.filler,
+            "relayer": self.loan_request.relayer,
+            "wrangler": self.loan_request.wrangler,
+            'relayerFeeLST': self.loan_request.relayerFeeLST,
+            'monitoringFeeLST': self.loan_request.monitoringFeeLST,
+            'rolloverFeeLST': self.loan_request.rolloverFeeLST,
+            'closureFeeLST': self.loan_request.closureFeeLST,
             'nonce': Web3.toInt(nonce)
         }
-        # print('\n\nself.loan_object: {0}'.format(self.loan_object))
 
     def create_approval(self):
         _addresses = [
-            self.loan_object["lender"],
-            self.loan_object["borrower"],
-            self.loan_request["relayer"],
+            self.loan_object['lender'],
+            self.loan_object['borrower'],
+            self.loan_request.relayer,
             self.loan_object['wrangler'],
-            self.loan_object["collateralToken"],
-            self.loan_object["loanToken"]
+            self.loan_object['collateralToken'],
+            self.loan_object['loanToken']
         ]
         _values = [
             str(Web3.toWei(self._borrow_currency_value(), 'ether')),
-            self.loan_request["loanAmountOffered"],
-            self.loan_request["relayerFeeLST"],
-            self.loan_request["monitoringFeeLST"],
-            self.loan_request["rolloverFeeLST"],
-            self.loan_request["closureFeeLST"],
-            self.loan_request["fillLoanAmount"]
+            self.loan_request.loanAmountOffered,
+            self.loan_request.relayerFeeLST,
+            self.loan_request.monitoringFeeLST,
+            self.loan_request.rolloverFeeLST,
+            self.loan_request.closureFeeLST,
+            self.loan_request.fillLoanAmount
         ]
         _timestamps = [
-            self.loan_request["offerExpiry"],
-            str(self._approval_expiry(timestamp=True))
+            self.loan_request.offerExpiry,
+            str(self.current_block_timestamp() + (2 * 60))
         ]
 
         self.approval = {
-            "_addresses": [Web3.toChecksumAddress(self.loan_object['lender']), Web3.toChecksumAddress(self.loan_object['borrower']), Web3.toChecksumAddress(self.loan_object['relayer']), Web3.toChecksumAddress(self.loan_object['wrangler']), Web3.toChecksumAddress(self.loan_object['collateralToken']), Web3.toChecksumAddress(self.loan_object['loanToken'])],
+            "_addresses": [Web3.toChecksumAddress(self.loan_object['lender']),Web3.toChecksumAddress(self.loan_object['borrower']),Web3.toChecksumAddress(self.loan_object['relayer']),Web3.toChecksumAddress(self.loan_object['wrangler']),Web3.toChecksumAddress(self.loan_object['collateralToken']),Web3.toChecksumAddress(self.loan_object['loanToken'])],
             "_values": self._position_hash_values(),
             "_nonce": Web3.toInt(text=self.loan_object['nonce']),
-            # "_kernel_daily_interest_rate": Web3.toInt(text=self.loan_request["interestRatePerDay"]),
-            "_kernel_daily_interest_rate": Web3.toWei(self.loan_request["interestRatePerDay"], "ether"),
+            "_kernel_daily_interest_rate": Web3.toWei(self.loan_request.interestRatePerDay, "ether"),
             "_is_creator_lender": self._is_kernel_creator_lender(),
             "_timestamps": [Web3.toInt(text=_timestamp) for _timestamp in _timestamps],
-            "_position_duration_in_seconds": Web3.toInt(text=self.loan_request["loanDuration"]),
-            "_kernel_creator_salt": self.loan_request["creatorSalt"],
-            "_sig_data_kernel_creator": self.loan_request["ecSignatureCreator"],
+            "_position_duration_in_seconds": Web3.toInt(text=self.loan_request.loanDuration),
+            "_kernel_creator_salt": self.loan_request.creatorSalt,
+            "_sig_data_kernel_creator": self.loan_request.ecSignatureCreator,
             "_sig_data_wrangler": Web3.toHex(self._signed_approval())
         }
-        # print('\n\nself.approval: {0}'.format(self.approval))
 
     def approve_loan(self, data):
-        self.loan_request = data
-        # print(self.loan_request)
+        self.loan_request = LoanRequest(**data)
+        # reset parameters
         self.errors = []
+        self.loan_object = {}
+        self.approval = {}
+        # perform validations
         self.validate_wrangler()
         self.validate_supported_wrangler()
         self.validate_supported_lend_currency()
         self.validate_supported_borrow_currency()
-
+        self.validate_kernel()
+        # create loan object
         self.create_loan_object()
-
+        # perform some more validations
+        self.validate_lend_currency_balance()
         self.validate_lend_currency_allowance()
+        self.validate_borrow_currency_balance()
         self.validate_borrow_currency_allowance()
+        self.validate_protocol_currency_balance()
         self.validate_protocol_currency_allowance()
-
+        # create approval
         self.create_approval()
 
-        # print('\n\nprotocol_contract : {0}'.format(self.protocol_contract().address))
-
         if not len(self.errors):
+            # estimate gas cost for transaction
             try:
-                gas_estimate = self.protocol_contract().functions.fill_kernel(
-                    self.approval['_addresses'],
-                    self.approval['_values'],
-                    self.approval['_nonce'],
-                    self.approval['_kernel_daily_interest_rate'],
-                    self.approval['_is_creator_lender'],
-                    self.approval['_timestamps'],
-                    self.approval['_position_duration_in_seconds'],
-                    self.approval['_kernel_creator_salt'],
-                    self.approval['_sig_data_kernel_creator'],
-                    self.approval['_sig_data_wrangler']
-                ).estimateGas()
+                gas_estimate, signed_tx = self._sign_fill_kernel_transaction()
                 print("Gas estimate to transact with fill_kernel: {0}\n".format(gas_estimate))
+                self.approval["_gas_estimate"] = gas_estimate
+                self.approval["_signed_transaction"] = signed_tx
             except ValueError as err:
                 self.errors.append({
                     'label': 'invalid_paramaters',
@@ -282,11 +439,46 @@ class SimpleWrangler:
     def get_positions(self, _address=None):
         positions = []
         _address = _address or None
-        if _address:
-            _address = Web3.toChecksumAddress(_address)
-            last_nonce = self.protocol_contract().functions.wrangler_nonces(Web3.toChecksumAddress(self.config[self.CURRENT_NET]["wrangler"]), _address).call()
+        if not _address:
+            last_position_index = self.protocol_contract().functions.last_position_index().call()
+            while last_position_index > -1:
+                position_hash = self.protocol_contract().functions.position_index(last_position_index).call()
+                position = self.protocol_contract().functions.position(position_hash).call()
+                positions.append(position)
+                last_position_index -= 1
         return positions
+
+    def liquidate(self, position_hash):
+        assert position_hash is not None, "position_hash cannot be None"
+        print("Sending transaction to liquidate_position : {0}\n".format(position_hash))
+        chain_id = 0
+        if self.CURRENT_NET == 'mainnet':
+            chain_id = 1
+        elif self.CURRENT_NET == 'kovan':
+            chain_id = 42
+        else:
+            chain_id = 101
+        assert chain_id > 0, "invalid chain id {0}".format(chain_id)
+        tx_nonce = self.web3_client.eth.getTransactionCount(Web3.toChecksumAddress(self.config[self.CURRENT_NET]["wrangler"]))
+        liquidate_txn = self.protocol_contract().functions.liquidate_position(position_hash).buildTransaction({
+            'chainId': chain_id,
+            'gas': 1150000,
+            'gasPrice': self.web3_client.eth.gasPrice,
+            'nonce': tx_nonce,
+        })
+        signed_txn = self.web3_client.eth.account.signTransaction(liquidate_txn, private_key=Web3.toBytes(hexstr=self.config[self.CURRENT_NET]["private_key"]))
+        tx_hash = self.web3_client.eth.sendRawTransaction(signed_txn.rawTransaction)
+        receipt = wait_for_receipt(self.web3_client, tx_hash, 1)
+        print("Transaction receipt mined: \n")
+        pprint.pprint(dict(receipt))
+
+        return True
 
 
     def monitor(self):
-        positions = self.get_positions()
+        # iterate over each position
+        for position in self.get_positions():
+            # check if the position has expired and is still open
+            if (self.current_block_timestamp() >= position[8]) and (position[15] == 1):
+                # liquidate the position
+                self.liquidate(position[21])

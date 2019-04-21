@@ -15,7 +15,7 @@ from wrangler import get_json_data_from_file, SimpleWrangler as Wrangler
 config = get_json_data_from_file("./secret.json")
 DEV = True
 CURRENT_NET = 'kovan' if DEV else 'mainnet'
-HTTP_PROVIDER_URI = "https://{0}.infura.io/{1}".format(CURRENT_NET, config[CURRENT_NET]['infura_key'])
+HTTP_PROVIDER_URI = "https://{0}.infura.io/v3/{1}".format(CURRENT_NET, config[CURRENT_NET]['infura_key'])
 LOCAL = False
 if LOCAL:
     CURRENT_NET = 'local'
@@ -57,7 +57,6 @@ class LoanRequests(Resource):
         if len(errors):
             print('\n\nerrors: {0}'.format(errors))
             abort(400, {"error": errors})
-        print('\n\napproval: {0}'.format(approval))
         return { 'data': loan, 'approval': approval }, 201
 
 
