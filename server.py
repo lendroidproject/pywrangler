@@ -57,6 +57,7 @@ class LoanRequests(Resource):
         if len(errors):
             print('\n\nerrors: {0}'.format(errors))
             abort(400, {"error": errors})
+        print('\n\napproval: {0}'.format(approval))
         return { 'data': loan, 'approval': approval }, 201
 
 

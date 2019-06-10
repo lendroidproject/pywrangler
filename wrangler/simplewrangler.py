@@ -3,7 +3,7 @@
 import time
 import pprint
 
-from .utils import get_abi, cmc_rate_per_weth, to_32byte_hex
+from .utils import get_abi, cmc_rate_per_weth, cryptocompare_rate, to_32byte_hex
 
 from datetime import timezone, datetime as dt
 from dateutil.relativedelta import relativedelta
@@ -105,10 +105,13 @@ class SimpleWrangler:
 
         self.ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
         self.errors = []
-        self.initial_margin = 1
+        self.initial_margin = 1.5
         self.loan_request = {}
         self.loan_object = {}
         self.approval = {}
+
+        self.supported_addresses = {Web3.toChecksumAddress(contract_address): contract_name for contract_name, contract_address in self.config[self.CURRENT_NET]["contracts"].items()}
+        print('\n\nself.supported_addresses:\n{0}\n\n'.format(self.supported_addresses))
 
     def current_block_timestamp(self):
         return self.web3_client.eth.getBlock('latest')['timestamp']
@@ -212,7 +215,7 @@ class SimpleWrangler:
         except AssertionError as err:
             self.errors.append({
                 'label': 'borrow_currency_balance',
-                'message': 'Borrower does not have enough balance {0} of WETH.'.format(_borrow_currency_value)
+                'message': 'Borrower does not have enough balance {0} of borrow currency.'.format(_borrow_currency_value)
             })
 
     def validate_borrow_currency_allowance(self):
@@ -224,7 +227,7 @@ class SimpleWrangler:
         except AssertionError as err:
             self.errors.append({
                 'label': 'borrow_currency_allowance',
-                'message': 'Borrower has not set allowance {0} for WETH.'.format(_borrow_currency_value)
+                'message': 'Borrower has not set allowance {0} for borrow currency.'.format(_borrow_currency_value)
             })
 
     def validate_protocol_currency_balance(self):
@@ -270,8 +273,15 @@ class SimpleWrangler:
             return 1/medianizer_rate
         return float(cmc_rate_per_weth('dai'))
 
+    def _borrow_currency_rate(self):
+        if self.supported_addresses[self.loan_request.collateralToken] == 'weth' and self.supported_addresses[self.loan_request.loanToken] == 'dai':
+            return self._weth_dai_rate()
+        return cryptocompare_rate(
+            self.supported_addresses[self.loan_request.loanToken],
+            self.supported_addresses[self.loan_request.collateralToken])
+
     def _borrow_currency_value(self):
-        return float(Web3.fromWei(float(self.loan_request.fillLoanAmount), 'ether')) * self._weth_dai_rate() * self.initial_margin
+        return float(Web3.fromWei(float(self.loan_request.fillLoanAmount), 'ether')) * self._borrow_currency_rate() * self.initial_margin
 
     def _position_hash_addresses(self):
         return [Web3.toChecksumAddress(self._kernel_creator()), Web3.toChecksumAddress(self.loan_object['lender']), Web3.toChecksumAddress(self.loan_object['borrower']), Web3.toChecksumAddress(self.loan_object['relayer']), Web3.toChecksumAddress(self.loan_object['wrangler']), Web3.toChecksumAddress(self.loan_object['collateralToken']), Web3.toChecksumAddress(self.loan_object['loanToken'])]
@@ -384,6 +394,7 @@ class SimpleWrangler:
             str(self.current_block_timestamp() + (2 * 60))
         ]
 
+
         self.approval = {
             "_addresses": [Web3.toChecksumAddress(self.loan_object['lender']),Web3.toChecksumAddress(self.loan_object['borrower']),Web3.toChecksumAddress(self.loan_object['relayer']),Web3.toChecksumAddress(self.loan_object['wrangler']),Web3.toChecksumAddress(self.loan_object['collateralToken']),Web3.toChecksumAddress(self.loan_object['loanToken'])],
             "_values": self._position_hash_values(),
@@ -433,6 +444,8 @@ class SimpleWrangler:
                     'label': 'invalid_paramaters',
                     'message': """{0}""".format(err)
                 })
+
+        self.loan_object['loanAmountOwed'] = str(self.loan_object['loanAmountOwed'])
 
         return self.loan_object, self.approval, self.errors
 

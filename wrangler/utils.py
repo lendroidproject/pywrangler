@@ -23,9 +23,20 @@ def get_abi(contract=None):
 
 
 def cmc_rate_per_weth(ticker):
-    cmc_api_url = "https://api.coinmarketcap.com/v1/ticker/{0}/?convert=ETH".format(ticker)
-    return requests.get(cmc_api_url).json()[0]["price_eth"]
+    api_url = "https://api.coinmarketcap.com/v1/ticker/{0}/?convert=ETH".format(ticker)
+    return requests.get(api_url).json()[0]["price_eth"]
 
 
 def to_32byte_hex(val):
     return Web3.toHex(Web3.toBytes(val).rjust(32, b'\0'))
+
+
+def cryptocompare_rate(lend_currency_ticker, borrow_currency_ticker):
+    if lend_currency_ticker.lower() == 'weth':
+        lend_currency_ticker = 'eth'
+    if borrow_currency_ticker.lower() == 'weth':
+        borrow_currency_ticker = 'eth'
+    lend_currency_ticker = lend_currency_ticker.upper()
+    borrow_currency_ticker = borrow_currency_ticker.upper()
+    api_url = "https://min-api.cryptocompare.com/data/price?fsym={0}&tsyms={1}".format(lend_currency_ticker, borrow_currency_ticker)
+    return requests.get(api_url).json()[borrow_currency_ticker]
