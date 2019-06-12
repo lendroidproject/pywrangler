@@ -61,5 +61,23 @@ class LoanRequests(Resource):
         return { 'data': loan, 'approval': approval }, 201
 
 
+@api.route('/loan_health/<int:loan_number>', endpoint='loan_health')
+class LoanHealth(Resource):
+
+    def get(self, loan_number):
+        """ Return the health of the collateral for a loan, given its loan number."""
+        w = Wrangler(
+            config=config,
+            web3_client=w3,
+            current_net=CURRENT_NET
+        )
+        health, errors = w.get_loan_health(loan_number)
+        if len(errors):
+            print('\n\nerrors: {0}'.format(errors))
+            abort(400, {"error": errors})
+        print('\n\nhealth: {0}'.format(health))
+        return { 'data': health }, 201
+
+
 if __name__ == '__main__':
     app.run(debug=True)

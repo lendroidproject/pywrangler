@@ -495,3 +495,29 @@ class SimpleWrangler:
             if (self.current_block_timestamp() >= position[8]) and (position[15] == 1):
                 # liquidate the position
                 self.liquidate(position[21])
+
+    def get_loan_health(self, loan_number):
+        health = 0
+        self.errors = []
+        position_index = loan_number - 1
+        if position_index < 0:
+            self.errors.append({
+                'label': 'invalid_loan_number',
+                'message': 'Loan number cannot be zero or negative'
+            })
+        # get the position
+        position_hash = self.protocol_contract().functions.position_index(Web3.toInt(text=position_index)).call()
+        position = self.protocol_contract().functions.position(position_hash).call()
+        borrow_currency_address = Web3.toChecksumAddress(position[9])
+        lend_currency_address = Web3.toChecksumAddress(position[10])
+        initial_collateral_amount = float(Web3.fromWei(float(position[11]), 'ether'))
+        lend_currency_filled = float(Web3.fromWei(float(position[13]), 'ether'))
+
+        lend_currency_current_rate_per_borrow_currency = cryptocompare_rate(
+            self.supported_addresses[borrow_currency_address],
+            self.supported_addresses[lend_currency_address]
+        )
+
+        health = initial_collateral_amount * lend_currency_current_rate_per_borrow_currency * 100 / self.initial_margin / lend_currency_filled
+
+        return health, self.errors
