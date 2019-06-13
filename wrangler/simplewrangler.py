@@ -496,14 +496,13 @@ class SimpleWrangler:
                 # liquidate the position
                 self.liquidate(position[21])
 
-    def get_loan_health(self, loan_number):
+    def get_loan_health(self, position_index):
         health = 0
         self.errors = []
-        position_index = loan_number - 1
         if position_index < 0:
             self.errors.append({
-                'label': 'invalid_loan_number',
-                'message': 'Loan number cannot be zero or negative'
+                'label': 'invalid_position_index',
+                'message': 'Loan position index cannot be negative'
             })
         # get the position
         position_hash = self.protocol_contract().functions.position_index(Web3.toInt(text=position_index)).call()
