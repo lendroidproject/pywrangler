@@ -55,9 +55,8 @@ class LoanRequests(Resource):
         )
         loan, approval, errors = w.approve_loan(request.get_json(force=True))
         if len(errors):
-            print('\n\nerrors: {0}'.format(errors))
             abort(400, {"error": errors})
-        print('\n\napproval: {0}'.format(approval))
+
         return { 'data': loan, 'approval': approval }, 201
 
 
@@ -73,10 +72,28 @@ class LoanHealth(Resource):
         )
         health, errors = w.get_loan_health(position_index)
         if len(errors):
-            print('\n\nerrors: {0}'.format(errors))
             abort(400, {"error": errors})
-        print('\n\nhealth: {0}'.format(health))
+
         return { 'data': health }, 201
+
+
+@api.route('/is_valid_protocol_transaction_sender/<string:prover>/<string:txHash>', endpoint='is_valid_protocol_transaction_sender')
+class LoanHealth(Resource):
+
+    def get(self, prover, txHash):
+        """ Return the health of the collateral for a loan, given its loan number."""
+        w = Wrangler(
+            config=config,
+            web3_client=w3,
+            current_net=CURRENT_NET
+        )
+
+        is_valid_sender = w.is_valid_protocol_transaction_sender(prover, txHash)
+        print('\n\nis_valid_sender: {0}\n\n'.format(is_valid_sender))
+        if not is_valid_sender:
+            abort(400)
+
+        return {}, 200
 
 
 if __name__ == '__main__':

@@ -496,6 +496,7 @@ class SimpleWrangler:
                 # liquidate the position
                 self.liquidate(position[21])
 
+
     def get_loan_health(self, position_index):
         health = 0
         self.errors = []
@@ -520,3 +521,13 @@ class SimpleWrangler:
         health = initial_collateral_amount * lend_currency_current_rate_per_borrow_currency * 100 / self.initial_margin / lend_currency_filled
 
         return health, self.errors
+
+
+    def is_valid_protocol_transaction_sender(self, sender, txHash):
+        protocol_tx = self.web3_client.eth.getTransaction(txHash)
+        print('\n\nprotocol_tx:\n{0}\n\n'.format(protocol_tx))
+        if protocol_tx['gas'] > 500000:
+            # this was most likely a fill tx
+            return Web3.toChecksumAddress(protocol_tx['from']) == Web3.toChecksumAddress(self.config[self.CURRENT_NET]["wrangler"])
+        else:
+            return Web3.toChecksumAddress(protocol_tx['from']) == Web3.toChecksumAddress(sender)
